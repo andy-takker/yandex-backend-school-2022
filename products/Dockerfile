@@ -1,7 +1,7 @@
 FROM almalinux:9.0
 
 WORKDIR /products
-RUN dnf update && dnf install python39 python3-pip -y
+RUN dnf update -y && dnf install python39 python3-pip -y
 ADD ./requirements.txt /
 RUN pip3 install -r /requirements.txt --no-cache-dir
 
