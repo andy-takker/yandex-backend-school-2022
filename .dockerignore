@@ -1,0 +1,6 @@
+venv/
+*.env
+.gitignore
+.idea/
+openapi.yaml
+Task.md

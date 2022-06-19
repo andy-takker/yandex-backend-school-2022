@@ -1,0 +1,39 @@
+version: '3.9'
+services:
+  backend:
+    hostname: localhost
+    depends_on:
+      - database
+    build:
+      context: products
+      dockerfile: Dockerfile
+      args:
+        DEBUG: ${DEBUG}
+        PROJECT_NAME: ${PROJECT_NAME}
+        SERVER_NAME: ${SERVER_NAME}
+
+        POSTGRES_HOST: ${POSTGRES_HOST}
+        POSTGRES_DB: ${POSTGRES_DB}
+        POSTGRES_USER: ${POSTGRES_USER}
+        POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+        POSTGRES_PORT: ${POSTGRES_PORT}
+    ports:
+      - "80:8081"
+    volumes:
+      - ./products:/products
+    privileged: true
+
+  database:
+    image: postgres:14.3
+    restart: always
+    volumes:
+      - ./database/data:/var/lib/postgresql/data
+      - ./database/backups:/backups
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_HOST: ${POSTGRES_HOST}

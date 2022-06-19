@@ -1,0 +1,16 @@
+[Unit]
+Description=My backend app
+After=network.target
+
+[Service]
+User=root
+
+WorkingDirectory=/products
+LimitNOFILE=4096
+ExecStart=/usr/local/bin/gunicorn main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8081
+Restart=on-failure
+RestartSec=5s
+EnvironmentFile=/etc/sysconfig/backend
+
+[Install]
+WantedBy=multi-user.target

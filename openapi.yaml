@@ -1,0 +1,438 @@
+openapi: 3.0.0
+info:
+  description: "Вступительное задание в Летнюю Школу Бэкенд Разработки Яндекса 2022"
+  title: Mega Market Open API
+  version: "1.0"
+paths:
+  /imports:
+    post:
+      tags:
+        - Базовые задачи
+      description: |
+        Импортирует новые товары и/или категории. Товары/категории импортированные повторно обновляют текущие. Изменение типа элемента с товара на категорию или с категории на товар не допускается. Порядок элементов в запросе является произвольным.
+
+          - uuid товара или категории является уникальным среди товаров и категорий
+          - родителем товара или категории может быть только категория
+          - принадлежность к категории определяется полем parentId
+          - товар или категория могут не иметь родителя (при обновлении parentId на null, элемент остается без родителя)
+          - название элемента не может быть null
+          - у категорий поле price должно содержать null
+          - цена товара не может быть null и должна быть больше либо равна нулю.
+          - при обновлении товара/категории обновленными считаются **все** их параметры
+          - при обновлении параметров элемента обязательно обновляется поле **date** в соответствии с временем обновления
+          - в одном запросе не может быть двух элементов с одинаковым id
+          - дата должна обрабатываться согласно ISO 8601 (такой придерживается OpenAPI). Если дата не удовлетворяет данному формату, необходимо отвечать 400.
+
+        Гарантируется, что во входных данных нет циклических зависимостей и поле updateDate монотонно возрастает. Гарантируется, что при проверке передаваемое время кратно секундам.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShopUnitImportRequest"
+      responses:
+        "200":
+          description: Вставка или обновление прошли успешно.
+        "400":
+          description: Невалидная схема документа или входные данные не верны.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                response:
+                  value: |-
+                    {
+                      "code": 400,
+                      "message": "Validation Failed"
+                    }
+  /delete/{id}:
+    delete:
+      tags:
+        - Базовые задачи
+      description: |
+        Удалить элемент по идентификатору. При удалении категории удаляются все дочерние элементы. Доступ к статистике (истории обновлений) удаленного элемента невозможен.
+
+        Так как время удаления не передается, при удалении элемента время обновления родителя изменять не нужно.
+
+        **Обратите, пожалуйста, внимание на этот обработчик. При его некорректной работе тестирование может быть невозможно.**
+      parameters:
+        - description: Идентификатор
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "3fa85f64-5717-4562-b3fc-2c963f66a333"
+      responses:
+        "200":
+          description: Удаление прошло успешно.
+        "400":
+          description: Невалидная схема документа или входные данные не верны.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                response:
+                  value: |-
+                    {
+                      "code": 400,
+                      "message": "Validation Failed"
+                    }
+        "404":
+          description: Категория/товар не найден.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                response:
+                  value: |-
+                    {
+                      "code": 404,
+                      "message": "Item not found"
+                    }
+  /nodes/{id}:
+    get:
+      tags:
+        - Базовые задачи
+      description: |
+        Получить информацию об элементе по идентификатору. При получении информации о категории также предоставляется информация о её дочерних элементах.
+
+        - для пустой категории поле children равно пустому массиву, а для товара равно null
+        - цена категории - это средняя цена всех её товаров, включая товары дочерних категорий. Если категория не содержит товаров цена равна null. При обновлении цены товара, средняя цена категории, которая содержит этот товар, тоже обновляется.
+      parameters:
+        - description: Идентификатор элемента
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "3fa85f64-5717-4562-b3fc-2c963f66a333"
+      responses:
+        "200":
+          description: Информация об элементе.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopUnit"
+        "400":
+          description: Невалидная схема документа или входные данные не верны.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                response:
+                  value: |-
+                    {
+                      "code": 400,
+                      "message": "Validation Failed"
+                    }
+        "404":
+          description: Категория/товар не найден.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                response:
+                  value: |-
+                    {
+                      "code": 404,
+                      "message": "Item not found"
+                    }
+  /sales:
+    get:
+      tags:
+        - Дополнительные задачи
+      description: |
+        Получение списка **товаров**, цена которых была обновлена за последние 24 часа включительно [now() - 24h, now()] от времени переданном в запросе. Обновление цены не означает её изменение. Обновления цен удаленных товаров недоступны. При обновлении цены товара, средняя цена категории, которая содержит этот товар, тоже обновляется.
+      parameters:
+        - description: Дата и время запроса. Дата должна обрабатываться согласно ISO 8601 (такой придерживается OpenAPI). Если дата не удовлетворяет данному формату, необходимо отвечать 400
+          in: query
+          name: date
+          required: true
+          schema:
+            type: string
+            format: date-time
+          example: "2022-05-28T21:12:01.000Z"
+      responses:
+        "200":
+          description: Список товаров, цена которых была обновлена.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopUnitStatisticResponse"
+        "400":
+          description: Невалидная схема документа или входные данные не верны.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                response:
+                  value: |-
+                    {
+                      "code": 400,
+                      "message": "Validation Failed"
+                    }
+  /node/{id}/statistic:
+    get:
+      tags:
+        - Дополнительные задачи
+      description: |
+        Получение статистики (истории обновлений) по товару/категории за заданный полуинтервал [from, to). Статистика по удаленным элементам недоступна.
+
+        - цена категории - это средняя цена всех её товаров, включая товары дочерних категорий.Если категория не содержит товаров цена равна null. При обновлении цены товара, средняя цена категории, которая содержит этот товар, тоже обновляется.
+        - можно получить статистику за всё время.
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+            format: uuid
+          required: true
+          description: UUID товара/категории для которой будет отображаться статистика
+          example: "3fa85f64-5717-4562-b3fc-2c963f66a333"
+        - in: query
+          name: dateStart
+          schema:
+            type: string
+            format: date-time
+          required: false
+          description: Дата и время начала интервала, для которого считается статистика. Дата должна обрабатываться согласно ISO 8601 (такой придерживается OpenAPI). Если дата не удовлетворяет данному формату, необходимо отвечать 400.
+          example: "2022-05-28T21:12:01.000Z"
+        - in: query
+          name: dateEnd
+          schema:
+            type: string
+            format: date-time
+          required: false
+          description: Дата и время конца интервала, для которого считается статистика. Дата должна обрабатываться согласно ISO 8601 (такой придерживается OpenAPI). Если дата не удовлетворяет данному формату, необходимо отвечать 400.
+          example: "2022-05-28T21:12:01.000Z"
+      responses:
+        "200":
+          description: Статистика по элементу.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopUnitStatisticResponse"
+        "400":
+          description: Некорректный формат запроса или некорректные даты интервала.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                response:
+                  value: |-
+                    {
+                      "code": 400,
+                      "message": "Validation Failed"
+                    }
+        "404":
+          description: Категория/товар не найден.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                response:
+                  value: |-
+                    {
+                      "code": 404,
+                      "message": "Item not found"
+                    }
+components:
+  schemas:
+    ShopUnitType:
+      type: string
+      description: Тип элемента - категория или товар
+      enum:
+        - OFFER
+        - CATEGORY
+    ShopUnit:
+      type: object
+      required:
+        - id
+        - name
+        - date
+        - type
+      properties:
+        id:
+          type: string
+          format: uuid
+          nullable: false
+          description: Уникальный идентфикатор
+          example: "3fa85f64-5717-4562-b3fc-2c963f66a333"
+        name:
+          description: Имя категории
+          type: string
+          nullable: false
+        date:
+          type: string
+          format: date-time
+          nullable: false
+          description: Время последнего обновления элемента. 
+          example: "2022-05-28T21:12:01.000Z"
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: UUID родительской категории
+          example: "3fa85f64-5717-4562-b3fc-2c963f66a333"
+        type:
+          $ref: '#/components/schemas/ShopUnitType'
+        price:
+          description: Целое число, для категории - это средняя цена всех дочерних товаров(включая товары подкатегорий). Если цена является не целым числом, округляется в меньшую сторону до целого числа. Если категория не содержит товаров цена равна null.
+          type: integer
+          nullable: true
+          format: int64
+        children:
+          description: Список всех дочерних товаров\категорий. Для товаров поле равно null.
+          type: array
+          items:
+            $ref: "#/components/schemas/ShopUnit"
+      example:
+        id: "3fa85f64-5717-4562-b3fc-2c963f66a111"
+        name: Категория
+        type: CATEGORY
+        parentId: null
+        date: "2022-05-28T21:12:01.000Z"
+        price: 6
+        children:
+          - name: Оффер 1
+            id: "3fa85f64-5717-4562-b3fc-2c963f66a222"
+            price: 4
+            date: "2022-05-28T21:12:01.000Z"
+            type: OFFER
+            parentId: "3fa85f64-5717-4562-b3fc-2c963f66a111"
+          - name: Подкатегория
+            type: CATEGORY
+            id: "3fa85f64-5717-4562-b3fc-2c963f66a333"
+            date: "2022-05-26T21:12:01.000Z"
+            parentId: "3fa85f64-5717-4562-b3fc-2c963f66a111"
+            price: 8
+            children:
+              - name: Оффер 2
+                id: "3fa85f64-5717-4562-b3fc-2c963f66a444"
+                parentId: "3fa85f64-5717-4562-b3fc-2c963f66a333"
+                date: "2022-05-26T21:12:01.000Z"
+                price: 8
+                type: OFFER
+    ShopUnitImport:
+      type: object
+      required:
+        - id
+        - name
+        - type
+      properties:
+        id:
+          type: string
+          format: uuid
+          nullable: false
+          description: Уникальный идентфикатор
+          example: "3fa85f64-5717-4562-b3fc-2c963f66a333"
+        name:
+          description: Имя элемента.
+          type: string
+          nullable: false
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+          example: "3fa85f64-5717-4562-b3fc-2c963f66a333"
+          description: UUID родительской категории
+        type:
+          $ref: '#/components/schemas/ShopUnitType'
+        price:
+          nullable: true
+          description: Целое число, для категорий поле должно содержать null.
+          type: integer
+          format: int64
+      example:
+        id: "3fa85f64-5717-4562-b3fc-2c963f66a444"
+        name: Оффер
+        parentId: "3fa85f64-5717-4562-b3fc-2c963f66a333"
+        price: 234
+        type: OFFER
+    ShopUnitImportRequest:
+      type: object
+      properties:
+        items:
+          type: array
+          description: Импортируемые элементы
+          nullable: false
+          items:
+            $ref: "#/components/schemas/ShopUnitImport"
+        updateDate:
+          type: string
+          nullable: false
+          format: date-time
+          example: "2022-05-28T21:12:01.000Z"
+          description: Время обновления добавляемых товаров/категорий.
+    ShopUnitStatisticUnit:
+      type: object
+      required:
+        - id
+        - name
+        - type
+        - date
+      properties:
+        id:
+          type: string
+          format: uuid
+          nullable: false
+          description: Уникальный идентфикатор
+          example: "3fa85f64-5717-4562-b3fc-2c963f66a333"
+        name:
+          description: Имя элемента
+          type: string
+          nullable: false
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: UUID родительской категории
+          example: "3fa85f64-5717-4562-b3fc-2c963f66a333"
+        type:
+          $ref: '#/components/schemas/ShopUnitType'
+        price:
+          description: Целое число, для категории - это средняя цена всех дочерних товаров(включая товары подкатегорий). Если цена является не целым числом, округляется в меньшую сторону до целого числа. Если категория не содержит товаров цена равна null.
+          type: integer
+          format: int64
+          nullable: true
+        date:
+          type: string
+          nullable: false
+          format: date-time
+          description: Время последнего обновления элемента.
+      example:
+        id: "3fa85f64-5717-4562-b3fc-2c963f66a444"
+        name: Оффер
+        date: "2022-05-28T21:12:01.000Z"
+        parentId: "3fa85f64-5717-4562-b3fc-2c963f66a333"
+        price: 234
+        type: OFFER
+    ShopUnitStatisticResponse:
+      type: object
+      properties:
+        items:
+          description: История в произвольном порядке.
+          type: array
+          items:
+            $ref: "#/components/schemas/ShopUnitStatisticUnit"
+    Error:
+      required:
+        - code
+        - message
+      properties:
+        code:
+          nullable: false
+          type: integer
+        message:
+          nullable: false
+          type: string
