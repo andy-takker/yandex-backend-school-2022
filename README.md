@@ -1,5 +1,7 @@
 # Задание на школу Бэкенд Разработки Яндекс
 
+Бэкенд сервис на Python: FastAPI + PyDantic + SqlAlchemy + Alembic + Docker
+
 ## Запуск проекта
 
 Зависимости (python-пакеты) лежат в файле `products/requiremets.txt`
